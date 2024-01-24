@@ -1,0 +1,314 @@
+---
+title: "HW5 - King County Real Estate Assignment"
+output: html_notebook
+author: Jeff Smith
+---
+This homework involves two problems -- both based on a real estate dataset similar (but not identical) the Auburn dataset that we used in class.
+
+You are planning a move to Seattle and are hoping to buy a house/condo/townhouse with your new-found wealth from your signing bonus with Amazon.  For the first problem, using the provided King County real estate transaction information, conduct an Exploratory Data Analysis with the primary objective of collecting information for your future purchase.  The data are similar, but not identical to the Auburn real estate data that we used in class, so you should definitely explore the additional columns and look for meaningful relationships in the data.  The script file that we used with the Auburn data in class should be of significant help to you.  
+
+In addition to the analysis/plots that you generate, be sure to use markdown sections of this notebook to describe your findings and discuss "what the data tells you."  Feel free to make comparisons to the Auburn market if you find that informative.  Note that this assignment is more than just generating random plots.  EDA is a process where you explore the data to find useful information and meaningful relationships in the data.  This analysis should include the use of tools from the Data Transformation chapter (filtering, sorting, mutating, grouping and summarizing, etc.) in addition to plots and graphs from the visualization chapter.  Note that not everything that you try will provide useful information, so be sure to use markdown to explain what you find and which visualizations you find informative.
+
+Second, use the modelr package to develop a regression-type predictive model that predicts price based on square footage (using sqft_living for the square footage).  The models_example1.R script file and the corresponding class and video materials should provide a guideline for this part of the assignment.  Note that you are free to use the lm or glm methods to verify your model, but I want you to replicate the basic process described in the book and the models_example.R script and associated video module.
+
+The data file used for this assignment is from the Coursera course "Machine Learning: Regression" - https://www.coursera.org/learn/ml-regression/home/welcome
+
+
+```{r}
+library("tidyverse")
+library(ggplot2)
+getwd()
+
+kcre <- read_csv("..\\..\\data\\kc_house_data.csv")
+str(kcre)
+
+```
+```{r}
+# My first personal interest is the waterfront feature in purchasing a house.
+ggplot(data = kcre, mapping = aes(x = as.character(waterfront), y = price)) + geom_boxplot()
+```
+
+As showing in the plot, properties with waterfront have much higher value. For money issue, I won't consider those luxury property. And those property are treated as out-liner and filtered out at the moment. 
+
+```{r}
+# filter out those property with waterfront
+mask = kcre$waterfront == 0
+kcre_no_waterfront <- kcre[mask, ]
+
+# similarly I will plot more categorical data
+ggplot(data = kcre_no_waterfront, mapping = aes(x = as.character(grade), y = price)) + geom_boxplot()
+
+ggplot(data = kcre_no_waterfront, mapping = aes(x = as.character(condition), y = price)) + geom_boxplot()
+```
+
+As the plots showing, price is positive related with grade and condition. Particularly, price is highly positive related to grade feature. It is intuitive that property square feet is positively related with price. This is the next thing I would look into. 
+
+```{r}
+# relation between sqft_lot and price
+ggplot(data = kcre_no_waterfront) + 
+  geom_point(mapping = aes(x = sqft_lot, y = price))
+# relation between sqft_above and price
+ggplot(data = kcre_no_waterfront) + 
+  geom_point(mapping = aes(x = sqft_above, y = price))
+# relation between sqft_above and price
+ggplot(data = kcre_no_waterfront) + 
+  geom_point(mapping = aes(x = sqft_living, y = price))
+```
+
+Lot over price plot shows that the lot size is concentrated up to 250k sqft and there are also out-liners. 
+Sqft_above and sqft_living plots show that there are certain linear relation between those two variable and price respectively. And this matches up with my expectation. 
+Next, the value of a property should have some relationship with the zipcode. I want to avoid such areas that are too expensive. 
+
+```{r}
+# find average value in different zip
+zip = unique(kcre_no_waterfront$zipcode)
+zip_price_mean <- c()
+for (z in zip) {
+  average = mean(kcre_no_waterfront[kcre_no_waterfront$zipcode == z, ]$price)
+zip_price_mean <- c(zip_price_mean, average)
+}
+zip_price <- data.frame(
+  zipcode = zip, average_price = zip_price_mean)
+#barplot(t(as.matrix(zip_price)), beside=TRUE)
+ggplot(zip_price, aes(x = zipcode, y = average_price)) + 
+  geom_bar(stat = "identity")
+```
+
+This plot shows that the average price over different zip code. I can conclude that the price in certain areas are significantly higher than others. By searching on Google maps, Amazon office buildings are mainly located at 98101, 98109, 98121. To think of a home purchasing, I personally want my home located not too far away from my work, school and grocery. So I will take this into consideration. 
+
+Next, I want to know how the price per square feet is changing over time. To get this information, I need to add addtional columns to the dataset. 
+
+```{r}
+# additional columns to the dataset
+# each new column is the unit price
+kcre_no_waterfront <- kcre_no_waterfront %>%
+  mutate(
+    lotPrice = kcre_no_waterfront$price / kcre_no_waterfront$sqft_lot,
+    livingPrice = kcre_no_waterfront$price / kcre_no_waterfront$sqft_living,
+    abovePrice = kcre_no_waterfront$price / kcre_no_waterfront$sqft_above
+  )
+
+# Property Price histogram
+ggplot(data = kcre_no_waterfront) +
+  geom_histogram(mapping = aes(x = price), binwidth = 200000) +
+  geom_vline(xintercept=mean(kcre_no_waterfront$price), color="red") + 
+  geom_vline(xintercept=median(kcre_no_waterfront$price), color="blue")
+
+# Property lot Price histogram
+ggplot(data = kcre_no_waterfront) +
+  geom_histogram(mapping = aes(x = lotPrice), binwidth = 5) +
+  geom_vline(xintercept=mean(kcre_no_waterfront$lotPrice), color="red") + 
+  geom_vline(xintercept=median(kcre_no_waterfront$lotPrice), color="blue")
+
+# Property lot Price histogram
+ggplot(data = kcre_no_waterfront) +
+  geom_histogram(mapping = aes(x = livingPrice), binwidth = 5) +
+  geom_vline(xintercept=mean(kcre_no_waterfront$livingPrice), color="red") + 
+  geom_vline(xintercept=median(kcre_no_waterfront$livingPrice), color="blue")
+
+# Property lot Price histogram
+ggplot(data = kcre_no_waterfront) +
+  geom_histogram(mapping = aes(x = abovePrice), binwidth = 5) +
+  geom_vline(xintercept=mean(kcre_no_waterfront$abovePrice), color="red") + 
+  geom_vline(xintercept=median(kcre_no_waterfront$abovePrice), color="blue")
+```
+
+As the plots showing above, the average price are always higher than the median. And I can conclude that the real estate market is a kind of right skewed distribution in terms of unit price. And people will usually get what they paid for. So I will filter my purchasing in around the mean and average. As I can reward my purchasing with a reasonable quality and price. 
+
+Next, when purchasing a new home, everyone will like to buy a brand-new home and be the first owner. This is a common consumer psychological phenomenon. But this purchasing intention will usually beyond people's purchasing power. But if the house is too old. It may require frequent repair or update which may lead to a non-negligible expense. To summary, instead of a new house, I will focus more on the condition of the property. To get this information I will make this data manipulation. 
+
+```{r}
+# Property condition bar chart
+ggplot(data = kcre_no_waterfront) +
+  geom_bar(mapping = aes(x=condition))
+
+# property grade bar chart
+ggplot(data = kcre_no_waterfront) +
+  geom_bar(mapping = aes(x=grade))
+
+# property with a basement True or False
+# additional column is added to the dataset
+kcre_no_waterfront <- kcre_no_waterfront %>%
+  mutate(
+    basement = kcre_no_waterfront$sqft_basement > 0
+  )
+ggplot(data = kcre_no_waterfront) +
+  geom_bar(mapping = aes(x=basement))
+```
+
+As we can see, most of the properties are in condition 3 and better. So I will filter my result beyond 3. Beside, most grades are 7 or higher. So I will filter my search greater or equal to 7.
+
+Next, I am a married man and I have a lovely baby girl. I will prefer at least 3 bedroom and 3 restrooms. I like to play rock music. I will prefer a free rock space and keep the noise in that space from neighbor and sleepy baby. So a basement works best for me. And I will filter my purchase with a True on basement.
+```{r}
+usa <- map_data('usa')
+properties <- tibble(
+  id = kcre_no_waterfront$id,
+  lat = kcre_no_waterfront$lat,
+  long = kcre_no_waterfront$long,
+  group = 1
+)
+
+ggplot(usa, aes(long, lat, group = group)) +
+  geom_polygon(fill = "white", colour = "black") +
+  coord_quickmap() +
+  geom_point(data = properties, aes(x = long, y = lat)) +
+  coord_cartesian(xlim=c(-123, -118), ylim = c(47, 49))
+```
+
+As I checked on Google maps, Tacoma international airport is located in the south part of Seattle. To avoid noise and traffic, I will prefer a home at the north part of Seattle and close to the sea for pleasure. So the latitude should be greater than 48 and longtitude should be smaller than -122.
+
+Now, let me try to filter my searching.
+```{r}
+prefered_property_mask <- kcre_no_waterfront$bedrooms >= 3 & kcre_no_waterfront$bathrooms >= 3
+prefered_property <- kcre_no_waterfront[prefered_property_mask, ]
+prefered_property <- prefered_property[prefered_property$lat > 47.5 & prefered_property$long < -122, ]
+# I will start from above unit price to filter my search
+prefered_property <- prefered_property[prefered_property$abovePrice >= 200 & prefered_property$abovePrice <= 400, ]
+# living unit price
+prefered_property <- prefered_property[prefered_property$livingPrice >= 200 & prefered_property$livingPrice <= 300, ]
+# lot unit price
+prefered_property <- prefered_property[prefered_property$lotPrice >= 100 & prefered_property$lotPrice <= 150, ]
+# basement
+prefered_property <- prefered_property[prefered_property$basement == TRUE, ]
+# grade and condition
+prefered_property <- prefered_property[prefered_property$grade >= 7 & prefered_property$condition >= 3, ]
+# some between mean and medium
+prefered_property <- prefered_property[prefered_property$price <= mean(prefered_property$price) & prefered_property$price >= median(prefered_property$price), ]
+```
+
+Now I have 12 properties satisfied my search requirement. And I believe this is a reasonable number of candidates to schedule an appointment with an agent and take a tour on site. In this assignment, I will directly choose the one with minimum price. And finally my choice is:
+
+```{r}
+# my final choice
+prefered_property[which.min(prefered_property$price),]
+```
+
+To summary, I found the price is strong positive related with grade feature. And it is also positive related with condition feature. It is a common sense that price is positive correlated with square feet, for example living sqft, above sqft and lot sqft. Average price are always higher than the median in terms of price over many features. It indicates that the real estate market in Seattle area is a kind of right skewed distribution in terms of unit price. After considering my own needs and the market availability, I found there are 12 properties match up with my needs. Basically, I get 12 results out of 21,613 with filtering and make my decision out of 12. 
+
+
+Part 2 Regression
+
+```{r}
+# retrieve data from original dataset
+sqft = kcre_no_waterfront$sqft_living
+price = kcre_no_waterfront$price
+
+ggplot(data=kcre_no_waterfront) + geom_point(aes(x=sqft_living, y=price),size=3)
+```
+
+It seems that there is certain linear relation between these two variable.
+
+```{r}
+# Build the model
+# guess from the graph
+w1 = 50000
+w2 = 300
+
+ggplot(kcre_no_waterfront, aes(sqft_living, price)) + 
+  geom_abline(aes(intercept = w1, slope = w2)) +
+  geom_point(size=3)
+
+# looks like a great guess
+```
+
+```{r}
+# random instance generator
+num <- 2000
+models <- tibble(
+  w1 = runif(num, 0, 500000),
+  w2 = runif(num, 100, 500)
+)
+# plot the random models with the data
+ggplot(kcre_no_waterfront, aes(sqft_living, price)) + 
+  geom_abline(aes(intercept = w1, slope = w2), data = models, alpha = 1/4) +
+  geom_point(size=3)
+```
+
+```{r}
+# (w1 and w2) and the x values and returns the y values
+model1 <- function(w, data) {
+  w[1] + data$sqft_living * w[2]
+}
+# defined (single values) w1 and w2
+model1(c(w1, w2), kcre_no_waterfront)
+
+# Distance metric ------
+measure_distance <- function(w, data) {
+  diff <- data$price - model1(w, data)
+  # RMS
+  sqrt(mean(diff ^ 2))
+  # RSS
+#  sum(diff^2)
+}
+
+# sample invocation
+measure_distance(c(w1, w2), kcre_no_waterfront)
+# Purrr -----
+# I need a 2-parameter function for purrr -- code the function
+# so that the sample dataset is used automatically (i.e.,
+# the df is not a parameter of this function, but is used internally)
+sim1_dist <- function(w1, w2) {
+  measure_distance(c(w1, w2), kcre_no_waterfront)
+}
+
+# sample invocation - same as the measure_distance above.
+sim1_dist(w1, w2)
+
+# Use purrr to run the model function for each model (row)
+# and store the distance in the tibble (using mutate)
+models <- models %>% 
+  mutate(dist = purrr::map2_dbl(w1, w2, sim1_dist))
+
+ggplot(kcre_no_waterfront, aes(sqft_living, price)) + 
+  geom_point(size = 2, colour = "grey30") + 
+  geom_abline(
+    aes(intercept = w1, slope = w2, colour = -dist), 
+    data = filter(models, rank(dist) <= 10)
+  )
+
+# to see the top 10
+filter(models, rank(dist) <= 10)
+```
+
+Looks good to me. Let me do one more step to find the optimal.
+```{r}
+best <- optim(c(-500000, 0), measure_distance, data = kcre_no_waterfront)
+best$par
+
+measure_distance(c(50000, 300), kcre_no_waterfront)
+
+# Plot the best 
+ggplot(kcre_no_waterfront, aes(sqft_living, price)) + 
+  geom_point(size = 2, colour = "grey30") + 
+  geom_abline(intercept = best$par[1], slope = best$par[2])
+
+#
+# Fit the best linear model using lm()
+#
+m <- lm( kcre_no_waterfront$price ~ kcre_no_waterfront$sqft_living, kcre_no_waterfront)
+summary(m)
+# plot the scatter and regression
+ggplot(data=kcre_no_waterfront) +
+  geom_point(aes(x=sqft_living, y=price)) + 
+  geom_abline(slope=coef(m)[2], intercept=coef(m)[1])
+
+# Some model-related functions - Standard R lm object functions
+coef(m)
+formula(m)
+
+# optimal regression line found.
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
